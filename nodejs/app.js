@@ -13,6 +13,7 @@ const termOptions = {
   cols: 197,
 };
 
+// ECS Execute Command and Start a SSM Session 
 var ecs = new ECSClient();
 
 var params = {
@@ -27,12 +28,15 @@ var command = new ExecuteCommandCommand(params)
 
 
 try {
+		// Send a ExecuteCommandCommand
 	    const data = await ecs.send(command)
 	    console.log(data)
+	    
+	    // get SSM Session and connect the websocket
 	    const startSessionRes = data.session;
 	    const connection = new WebSocket(startSessionRes.streamUrl);
 	    
-
+		// auth on open using session token
 		connection.onopen = () => {
 		    ssm.init(connection, {
 		      token: startSessionRes.tokenValue,
@@ -40,23 +44,26 @@ try {
 		    });
 		  };
 		
-		  connection.onerror = (error) => {
-		    console.log(`WebSocket error: ${error}`);
-		  };
+		connection.onerror = (error) => {
+			console.log(`WebSocket error: ${error}`);
+		};
 		
-		  connection.onmessage = (event) => {
-		    var agentMessage = ssm.decode(event.data);
-		    ssm.sendACK(connection, agentMessage);
-		    if (agentMessage.payloadType === 1) {
-		      process.stdout.write(textDecoder.decode(agentMessage.payload));
-		    } else if (agentMessage.payloadType === 17) {
-		      ssm.sendInitMessage(connection, termOptions);
-		    }
-		  };
+		// on receive message, do print stdout
+		connection.onmessage = (event) => {
+			var agentMessage = ssm.decode(event.data);
+			ssm.sendACK(connection, agentMessage);
+			if (agentMessage.payloadType === 1) {
+				process.stdout.write(textDecoder.decode(agentMessage.payload));
+			} else if (agentMessage.payloadType === 17) {
+				ssm.sendInitMessage(connection, termOptions);
+			}
+		};
 		
-		  connection.onclose = () => {
-		    console.log("websocket closed");
-		  };
+		// when job finish, it will get close connection event.
+		connection.onclose = () => {
+			console.log("websocket closed");
+			// Program exit //
+		};
 
 	    console.log('end')
 } catch (error) {
